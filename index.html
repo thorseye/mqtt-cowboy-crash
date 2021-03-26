@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MQTT test</title>
+
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/purecss@2.0.5/build/pure-min.css"
+      integrity="sha384-LTIDeidl25h2dPxrB2Ekgc9c7sEC3CWGM6HeFmuDNUjX76Ert4Z4IY714dhZHPLd"
+      crossorigin="anonymous"
+    />
+    <style>
+      .main {
+        margin: 2rem auto;
+        max-width: 1024px;
+      }
+      pre {
+        background: #cecece;
+        padding: 0.5rem;
+      }
+    </style>
+    <script
+      src="node_modules/paho-mqtt/paho-mqtt-min.js"
+      type="text/javascript"
+    ></script>
+  </head>
+  <body>
+    <div class="main">
+      <h1>MQTT test</h1>
+      <h2>Please open the developer tools to see output in console</h2>
+      <br />
+
+      <h2>Info</h2>
+      <p>
+        This is a demo to show that rabbitmq-server will log a crash if the
+        permissions for the mqtt user are "wrong".
+      </p>
+
+      <h3>Step 1</h3>
+      <p>
+        First, prepare your RabbitMQ setup according to the instructions in
+        README.md
+      </p>
+
+      <p>
+        After everything is setup, reload this page (connection is made at page
+        load)
+      </p>
+
+      <h3>Step 2</h3>
+      <p>Now, press the button below to try to publish something</p>
+
+      <button class="pure-button" onclick="publish()">Publish</button>
+
+      <p>You should see some output in the console.</p>
+      <p>
+        Since the user has no topic write permissions, MQTT closes the
+        connection We will try to reconnect automatically to prepare for the
+        next step.
+      </p>
+
+      <h3>Step 3</h3>
+      <p>
+        Next, change the permissions for the user (set one of
+        configure/write/read to an empty string):
+      </p>
+      <pre>rabbitmqctl set_permissions -p mqtt-vhost mqtt '.*' '' '.*'</pre>
+
+      <h3>Step 4</h3>
+      <p>Now, try to publish a message again</p>
+      <button class="pure-button" onclick="publish()">Publish</button>
+
+      <h3>Step 5</h3>
+      <p>Check the logs - a crash has happened!</p>
+    </div>
+
+    <script>
+      const MAX_RECONNECTION_ATTEMPTS = 3;
+      let attempt = 0;
+
+      const wsbroker = "localhost";
+      const wsport = 15675;
+      const client = new Paho.Client(
+        wsbroker,
+        wsport,
+        "/ws",
+        "myclientid_" + parseInt(Math.random() * 100, 10)
+      );
+
+      client.onConnectionLost = (res) => {
+        console.log(`CONNECTION LOST: ${res.errorMessage}`);
+
+        if (attempt++ < MAX_RECONNECTION_ATTEMPTS) {
+          console.log(`Reconnecting...`);
+          client.connect(options);
+        } else {
+          console.log(
+            `Reached max reconnection attempts (${MAX_RECONNECTION_ATTEMPTS})`
+          );
+        }
+      };
+      client.onMessageArrived = (message) => {
+        console.log(`RECEIVED DATA:`, message.payloadBytes);
+      };
+
+      const options = {
+        timeout: 3,
+        keepAliveInterval: 30,
+        onSuccess: () => {
+          console.log(`CONNECTION SUCCESS`);
+          client.subscribe(`x/y/*`, { qos: 1 });
+        },
+        onFailure: (message) => {
+          console.log(`CONNECTION FAILURE: ${message.errorMessage}`);
+        },
+      };
+
+      console.log(`CONNECT TO ${wsbroker}:${wsport}`);
+      client.connect(options);
+
+      const publish = () => {
+        const data = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]);
+        client.send("x/y/z", data, 1, false);
+      };
+    </script>
+  </body>
+</html>
